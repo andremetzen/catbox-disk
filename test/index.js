@@ -8,6 +8,18 @@ const Disk   = require('..');
 const Fs     = require('fs');
 const Path   = require('path');
 const Tmp    = require('tmp');
+const Util   = require('util');
+
+// promisify
+const fs = {
+    writeFile: Util.promisify(Fs.writeFile),
+    readFile: Util.promisify(Fs.readFile),
+    unlink: Util.promisify(Fs.unlink),
+    chmod: Util.promisify(Fs.chmod),
+    stat: Util.promisify(Fs.stat),
+    appendFile: Util.promisify(Fs.appendFile),
+    exists: Util.promisify(Fs.exists)
+};
 
 // Test shortcuts
 const lab      = exports.lab = Lab.script();
@@ -46,7 +58,6 @@ describe('Disk', () => {
         it('throws an error with no provided cachePath', (done) => {
 
             const fn = () => {
-
                 new Catbox.Client(Disk);
             };
             expect(fn).to.throw(Error);
@@ -54,35 +65,35 @@ describe('Disk', () => {
 
         });
 
-        it('throws an error with a non-existent cachePath', (done) => {
+        it('throws an error with a non-existent cachePath', async () => {
 
             const client = new Catbox.Client(Disk, { cachePath: '/does/not/exist/yo/ho/ho' });
-            client.start((err) => {
 
-                expect(err).to.exist();
-                expect(client.isReady()).to.equal(false);
-                done();
-            });
+            try {
+                await client.start();
+            } catch (e) {
+                expect(e).to.be.instanceof(Error)
+            }
 
+            expect(client.isReady()).to.equal(false);
         });
 
-        it('throws an error with a non-directory cachePath', (done) => {
+        it('throws an error with a non-directory cachePath', async () => {
 
             const filepath = Path.join(tmpcachepath.name,'diskCacheTestFile.txt');
-            Fs.writeFile(filepath,'ok', (err) => {
 
-                if (err){
-                    throw err;
-                }
-                const client = new Catbox.Client(Disk, { cachePath: filepath });
-                client.start((err2) => {
+            await fs.writeFile(filepath,'ok')
+            const client = new Catbox.Client(Disk, { cachePath: filepath });
 
-                    expect(err2).to.exist();
-                    expect(client.isReady()).to.equal(false);
-                    Fs.unlinkSync(filepath);
-                    done();
-                });
-            });
+            try {
+                await client.start();
+            } catch (e) {
+                expect(e).to.be.instanceof(Error)
+            }
+
+            expect(client.isReady()).to.equal(false);
+
+            await fs.unlink(filepath);
         });
 
         it('throws an error with a non-integer cleanEvery', (done) => {
@@ -127,561 +138,375 @@ describe('Disk', () => {
 
     });
 
-
-
-
     describe('#start', () => {
 
-        it('creates a new connection', (done) => {
+        it('creates a new connection', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                expect(client.isReady()).to.equal(true);
-                done();
-            });
+            try {
+                await client.start();
+            } catch (e){
+                console.log(e);
+            }
+            expect(client.isReady()).to.equal(true);
         });
 
-        it('closes the connection', (done) => {
+        it('closes the connection', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
+            await client.start();
+            expect(client.isReady()).to.equal(true);
+            await client.stop();
+            expect(client.isReady()).to.equal(false);
 
-                expect(err).to.not.exist();
-                expect(client.isReady()).to.equal(true);
-                client.stop();
-                expect(client.isReady()).to.equal(false);
-                done();
-            });
         });
 
-        it('ignored starting a connection twice on same event', (done) => {
-
-            let x = 2;
-            const client = new Catbox.Client(Disk, options);
-            const start = () => {
-
-                client.start((err) => {
-
-                    expect(err).to.not.exist();
-                    expect(client.isReady()).to.equal(true);
-                    --x;
-                    if (!x) {
-                        done();
-                    }
-                });
-            };
-
-            start();
-            start();
-        });
-
-
-        it('ignored starting a connection twice chained', (done) => {
+        it('ignored starting a connection twice on same event', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                expect(client.isReady()).to.equal(true);
-                client.start((err2) => {
-
-                    expect(err2).to.not.exist();
-                    expect(client.isReady()).to.equal(true);
-                    done();
-                });
-            });
+            await client.start();
+            expect(client.isReady()).to.equal(true);
+            await client.start();
+            expect(client.isReady()).to.equal(true);
         });
 
     });
 
-
-
-
-
     describe('#get', () => {
 
-
-        it('returns not found on get when item expired', (done) => {
-
-            const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                const key = { id: 'x', segment: 'test' };
-                client.set(key, 'x', 1, (err2) => {
-
-                    expect(err2).to.not.exist();
-                    setTimeout(() => {
-
-                        client.get(key, (err3, result) => {
-
-                            expect(err3).to.equal(null);
-                            expect(result).to.equal(null);
-                            done();
-                        });
-                    }, 1000);
-                });
-            });
-        });
-
-        it('returns not found on get when using null key', (done) => {
+        it('returns not found on get when item expired', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
+            await client.start();
 
-                expect(err).to.not.exist();
-                client.get(null, (err2, result) => {
+            const key = { id: 'x', segment: 'test' };
+            await client.set(key, 'x', 1);
 
-                    expect(err2).to.equal(null);
-                    expect(result).to.equal(null);
-                    done();
-                });
-            });
+            await setTimeout(async () => {
+                const result = await client.get(key);
+                expect(result).to.equal(null);
+            }, 1000);
         });
 
-        it('errors on get when using invalid key', (done) => {
+        it('returns not found on get when using null key', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                client.get({}, (err2) => {
-
-                    expect(err2 instanceof Error).to.equal(true);
-                    done();
-                });
-            });
+            await client.start();
+            try {
+                await client.get(null);
+            } catch (e) {
+                expect(e).to.be.instanceof(Error)
+            }
         });
 
-        it('errors on get when stopped', (done) => {
+        it('errors on get when using invalid key', async () => {
+
+            const client = new Catbox.Client(Disk, options);
+            await client.start();
+            try {
+                await client.get({});
+            } catch (e) {
+                expect(e).to.be.instanceof(Error)
+            }
+        });
+
+        it('errors on get when stopped', async () => {
 
             const client = new Catbox.Client(Disk, options);
             client.stop();
             const key = { id: 'x', segment: 'test' };
-            client.connection.get(key, (err, result) => {
-
-                expect(err).to.exist();
-                expect(result).to.not.exist();
-                done();
-            });
+            try {
+                await client.connection.get(key)
+            } catch (e) {
+                expect(e).to.be.instanceof(Error)
+            }
         });
 
-        it('gets an item after setting it', (done) => {
+        it('gets an item after setting it', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
+            await client.start();
 
-                expect(err).to.not.exist();
-
-                const key = { id: 'test/id?with special%chars&', segment: 'test' };
-                client.set(key, '123', 5000, (err2) => {
-
-                    expect(err2).to.not.exist();
-                    client.get(key, (err3, result) => {
-
-                        expect(err3).to.equal(null);
-                        expect(result.item).to.equal('123');
-                        done();
-                    });
-                });
-            });
+            const key = { id: 'test/id?with special%chars&', segment: 'test' };
+            await client.set(key, '123', 5000);
+            const result = await client.get(key)
+            expect(result.item).to.equal('123');
         });
 
-        it('gets a ttl back on a valid key', (done) => {
+        it('gets a ttl back on a valid key', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
+            await client.start();
 
-                expect(err).to.not.exist();
-
-                const key = { id: 'test/id?with special%chars&', segment: 'test' };
-                client.set(key, {foo:'bar'}, 5000, (err2) => {
-
-                    expect(err2).to.not.exist();
-                    setTimeout(()=>{
-                        client.get(key, (err3, result) => {
-
-                            expect(err3).to.equal(null);
-                            console.log('result:',result);
-                            expect(result.item.foo).to.equal('bar');
-                            expect(result.ttl).to.be.a.number();
-                            done();
-                        });
-                    },1000);
-                });
-            });
+            const key = { id: 'test/id?with special%chars&', segment: 'test' };
+            await client.set(key, {foo:'bar'}, 5000);
+            const result = await client.get(key);
+            expect(result.item.foo).to.equal('bar');
+            expect(result.ttl).to.be.a.number();
         });
 
-        it('throws error on existing unreadable key ', (done) => {
+        it('throws error on existing unreadable key ', async () => {
 
             const disk = new Disk(options);
-            disk.start(() => {
+            await disk.start();
 
-                const key = { segment : 'segment', id : 'unreadablekey' };
-                const fp  = disk.getStoragePathForKey(key);
+            const key = { segment : 'segment', id : 'unreadablekey' };
+            const fp  = disk.getStoragePathForKey(key);
 
-                disk.set(key, 'notok', 2000, () => {
+            await disk.set(key, 'notok', 2000);
 
-                    Fs.chmodSync(fp,'0222'); // make the file unreadable
-                    disk.get(key, (err, result) => {
+            await fs.chmod(fp,'0222'); // make the file unreadable
+            try {
+                await disk.get(key);
+            } catch (e) {
+                expect(e).to.be.instanceof(Error)
+                expect(e.code).to.not.equal('ENOENT');
+            }
 
-                        expect(err).to.exist();
-                        expect(err.code).to.not.equal('ENOENT');
-                        expect(result).to.not.exist();
-                        Fs.unlinkSync(fp);
-                        done();
-                    });
-                });
-
-            });
+            await fs.unlink(fp);
         });
 
-        it('returns not found on unparseable JSON and removes file', (done) => {
+        it('returns not found on unparseable JSON and removes file', async () => {
 
             const disk = new Disk(options);
-            disk.start(() => {
+            await disk.start();
 
-                const key = { segment : 'segment', id : 'badjson' };
-                const fp  = disk.getStoragePathForKey(key);
+            const key = { segment : 'segment', id : 'badjson' };
+            const fp  = disk.getStoragePathForKey(key);
 
-                disk.set(key, 'notok', 2000, () => {
+            await disk.set(key, 'notok', 2000);
 
-                    Fs.appendFileSync(fp, 'bad data that kills JSON');
-                    disk.get(key, (err, result) => {
-
-                        expect(err).to.not.exist();
-                        expect(result).to.not.exist();
-                        expect(Fs.existsSync(fp)).to.equal(false);
-                        done();
-                    });
-                });
-
-            });
+            await fs.appendFile(fp, 'bad data that kills JSON');
+            try {
+                await disk.get(key);
+            } catch (e) {
+                expect(e).to.be.instanceof(Error);
+                expect(Fs.existsSync(fp)).to.equal(false);
+            }
         });
 
-        it('returns not found on missing key', (done) => {
+        it('returns not found on missing key', async () => {
 
             const disk = new Disk(options);
-            disk.start(() => {
+            await disk.start();
 
-                const key = { segment : 'segment', id : 'missingkey' };
+            const key = { segment : 'segment', id : 'missingkey' };
 
-                disk.get(key, (err, result) => {
-
-                    expect(err).to.not.exist();
-                    expect(result).to.not.exist();
-                    done();
-                });
-
-
-            });
+            const result = await disk.get(key);
+            expect(result).to.not.exist();
         });
 
     });
-
-
-
-
-
 
     describe('#set', () => {
 
 
-        it('errors on set when stopped', (done) => {
+        it('errors on set when stopped', async () => {
 
             const client = new Catbox.Client(Disk, options);
             client.stop();
             const key = { id: 'x', segment: 'test' };
-            client.connection.set(key, 'y', 1, (err) => {
-
-                expect(err).to.exist();
-                done();
-            });
+            try {
+                await client.connection.set(key, 'y', 1);
+            } catch (e) {
+                expect(e).to.be.instanceof(Error);
+            }
         });
 
 
-        it('supports empty keys', (done) => {
+        it('supports empty keys', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
+            await client.start();
 
-                expect(err).to.not.exist();
+            const key = { id: '', segment: 'test' };
+            await client.set(key, '123', 5000);
 
-                const key = { id: '', segment: 'test' };
-                client.set(key, '123', 5000, (err2) => {
-
-                    expect(err2).to.not.exist();
-                    client.get(key, (err3, result) => {
-
-                        expect(err3).to.not.exist();
-                        expect(result.item).to.equal('123');
-                        done();
-                    });
-                });
-            });
+            const result = await client.get(key);
+            expect(result.item).to.equal('123');
         });
 
-        it('errors on set when using null key', (done) => {
+        it('errors on set when using null key', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                client.set(null, {}, 1000, (err2) => {
-
-                    expect(err2 instanceof Error).to.equal(true);
-                    done();
-                });
-            });
+            await client.start();
+            try {
+                await client.set(null, {}, 1000);
+            } catch (e) {
+                expect(e).to.be.instanceof(Error);
+            }
         });
 
-        it('errors on set when using invalid key', (done) => {
+        it('errors on set when using invalid key', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                client.set({}, {}, 1000, (err2) => {
-
-                    expect(err2 instanceof Error).to.equal(true);
-                    done();
-                });
-            });
+            await client.start();
+            try {
+                await client.set({}, {}, 1000);
+            } catch (e) {
+                expect(e).to.be.instanceof(Error);
+            }
         });
 
-        it('ignores set when using non-positive ttl value', (done) => {
+        it('ignores set when using non-positive ttl value', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
+            await client.start();
 
-                expect(err).to.not.exist();
-                const key = { id: 'x', segment: 'test' };
-                client.set(key, 'y', 0, (err2) => {
-
-                    expect(err2).to.not.exist();
-                    done();
-                });
-            });
+            const key = { id: 'x', segment: 'test' };
+            await client.set(key, 'y', 0);
         });
 
-        it('fails setting an item with circular references', (done) => {
+        it('fails setting an item with circular references', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
+            await client.start();
+            const key = { id: 'circular', segment: 'test' };
+            const value = { a: 1 };
+            value.b = value;
 
-                expect(err).to.not.exist();
-                const key = { id: 'circular', segment: 'test' };
-                const value = { a: 1 };
-                value.b = value;
-
-                client.set(key, value, 10, (err2) => {
-
-                    expect(err2).to.exist();
-                    // expect(err.message).to.equal('Converting circular structure to JSON');
-                    done();
-                });
-            });
+            try {
+                await client.set(key, value, 10);
+            } catch (e) {
+                expect(e).to.be.instanceof(Error);
+            }
         });
 
-        it('adds an item to the cache object', (done) => {
+        it('adds an item to the cache object', async () => {
 
             const key = { segment: 'test', id: 'test' };
             const disk = new Disk(options);
 
-            disk.start(() => {
-
-                disk.set(key, 'myvalue', 2000, () => {
-
-                    disk.get(key, (err, result) => {
-
-                        expect(err).to.not.exist();
-                        expect(result.item).to.equal('myvalue');
-                        done();
-                    });
-                });
-            });
+            await disk.start();
+            await disk.set(key, 'myvalue', 2000);
+            const result = await disk.get(key);
+            expect(result.item).to.equal('myvalue');
         });
 
     });
-
 
     describe('#drop', () => {
 
-        it('does not return an expired item', (done) => {
+        it('does not return an expired item', async () => {
 
             const key = { segment: 'test', id: 'test' };
             const disk = new Disk(options);
-            disk.start(() => {
+            await disk.start();
 
-                disk.set(key, 'myvalue', 1500, () => {
+            await disk.set(key, 'myvalue', 1500)
 
-                    disk.get(key, (err, result) => {
-
-                        expect(err).to.not.exist();
-                        expect(result.item).to.equal('myvalue');
-                        setTimeout(() => {
-
-                            disk.get(key, (err2, result2) => {
-
-                                expect(err2).to.not.exist();
-                                expect(result2).to.not.exist();
-                                done();
-                            });
-                        }, 1800);
-                    });
-                });
-            });
+            const result = await disk.get(key);
+            expect(result.item).to.equal('myvalue');
+            await setTimeout(async () => {
+                const result2 = await disk.get(key);
+                expect(result2).to.not.exist();
+            }, 1800);
         });
 
-        it('drops an existing item', (done) => {
+        it('drops an existing item', async () => {
+            const client = new Catbox.Client(Disk, options);
+            await client.start();
+
+            const key = { id: 'x', segment: 'test' };
+            await client.set(key, '123', 5000);
+
+            const result = await client.get(key);
+            expect(result.item).to.equal('123');
+            expect(async () => await client.drop(key)).to.not.throw();
+        });
+
+        it('drops an item from a missing segment', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                const key = { id: 'x', segment: 'test' };
-                client.set(key, '123', 5000, (err2) => {
-
-                    expect(err2).to.not.exist();
-                    client.get(key, (err3, result) => {
-
-                        expect(err3).to.equal(null);
-                        expect(result.item).to.equal('123');
-                        client.drop(key, (err4) => {
-
-                            expect(err4).to.not.exist();
-                            done();
-                        });
-                    });
-                });
-            });
+            await client.start();
+            const key = { id: 'x', segment: 'test' };
+            expect(async () => await client.drop(key)).to.not.throw();
         });
 
-        it('drops an item from a missing segment', (done) => {
+
+        it('drops a missing item', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                const key = { id: 'x', segment: 'test' };
-                client.drop(key, (err2) => {
-
-                    expect(err2).to.not.exist();
-                    done();
-                });
-            });
+            await client.start();
+            const key = { id: 'x', segment: 'test' };
+            await client.set(key, '123', 2000);
+            const result = await client.get(key);
+            expect(result.item).to.equal('123');
+            expect(async () => await client.drop({ id: 'y', segment: 'test' })).to.not.throw();
         });
 
 
-        it('drops a missing item', (done) => {
-
-            const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                const key = { id: 'x', segment: 'test' };
-                client.set(key, '123', 2000, (err2) => {
-
-                    expect(err2).to.not.exist();
-                    client.get(key, (err3, result) => {
-
-                        expect(err3).to.equal(null);
-                        expect(result.item).to.equal('123');
-                        client.drop({ id: 'y', segment: 'test' }, (err4) => {
-
-                            expect(err4).to.not.exist();
-                            done();
-                        });
-                    });
-                });
-            });
-        });
-
-
-        it('errors on an undroppable file', (done) => {
-
+        it('errors on an undroppable file', async () => {
 
             const disk = new Disk(options);
-            disk.start(() => {
+            await disk.start();
 
-                const key = { segment : 'segment', id : 'undropablekey' };
-                const fp  = disk.getStoragePathForKey(key);
+            const key = { segment : 'segment', id : 'undropablekey' };
+            const fp  = disk.getStoragePathForKey(key);
 
-                disk.set(key, 'notok', 2000, () => {
+            await disk.set(key, 'notok', 2000)
 
-                    const dir = Path.dirname(fp);
-                    Fs.chmodSync(dir,'0555'); // make the file unreadable
-                    disk.drop(key, (err) => {
+            const dir = Path.dirname(fp);
+            Fs.chmodSync(dir,'0555'); // make the file unreadable
+            try {
+                await disk.drop(key)
+            } catch (e) {
+                expect(e).to.be.instanceof(Error);
+                expect(e.code).to.not.equal('ENOENT');
+            }
 
-                        expect(err).to.exist();
-                        expect(err.code).to.not.equal('ENOENT');
-                        Fs.chmodSync(dir,'0777');
-                        Fs.unlinkSync(fp);
-                        done();
-                    });
-                });
-
-            });
-
+            Fs.chmodSync(dir,'0777');
+            Fs.unlinkSync(fp);
         });
 
-        it('errors on drop when using invalid key', (done) => {
+        it('errors on drop when using invalid key', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                client.drop({}, (err2) => {
-
-                    expect(err2).to.exist(true);
-                    done();
-                });
-            });
+            await client.start();
+            try {
+                await client.drop({});
+            } catch (e) {
+                expect(e).to.be.instanceof(Error);
+            }
         });
 
 
-        it('errors on drop when using null key', (done) => {
+        it('errors on drop when using null key', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.start((err) => {
-
-                expect(err).to.not.exist();
-                client.drop(null, (err2) => {
-
-                    expect(err2 instanceof Error).to.equal(true);
-                    done();
-                });
-            });
+            await client.start();
+            try {
+                await client.drop(null);
+            } catch (e) {
+                expect(e).to.be.instanceof(Error);
+            }
         });
 
 
-        it('errors on drop when stopped', (done) => {
+        it('errors on drop when stopped', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.stop();
+            await client.stop();
             const key = { id: 'x', segment: 'test' };
-            client.connection.drop(key, (err) => {
-
-                expect(err).to.exist();
-                done();
-            });
+            try {
+                await client.connection.drop(key);
+            } catch (e) {
+                expect(e).to.be.instanceof(Error);
+            }
         });
 
 
-        it('errors when cache item dropped while stopped', (done) => {
+        it('errors when cache item dropped while stopped', async () => {
 
             const client = new Catbox.Client(Disk, options);
-            client.stop();
-            client.drop('a', (err) => {
-
-                expect(err).to.exist();
-                done();
-            });
+            await client.stop();
+            try {
+                await client.drop('a')
+            } catch (e) {
+                expect(e).to.be.instanceof(Error);
+            }
         });
     });
-
 
     describe('#validateSegmentName', () => {
 
@@ -719,24 +544,23 @@ describe('Disk', () => {
 
     describe('#cacheCleanerInit', () => {
 
-        it('ignores filenames not matching the cache naming scheme', {timeout:8000}, (done) => {
+        it('ignores filenames not matching the cache naming scheme', {timeout:8000}, async () => {
 
             const disk = new Disk({ cachePath: tmpcachepath.name });
 
             const keepfp = Path.join(tmpcachepath.name,'test.keep');
-            Fs.writeFileSync(keepfp,'ok','utf8');
+            await fs.writeFile(keepfp,'ok','utf8');
 
             const key = { segment:'segment', id:'removablekey' };
             const removefp  = disk.getStoragePathForKey(key).split('/').slice(-1)[0];
 
-            Fs.writeFileSync(Path.join(tmpcachepath.name,removefp),'{}','utf8');
+            await fs.writeFile(Path.join(tmpcachepath.name,removefp),'{}','utf8');
 
-            disk.cacheCleanerInit();
-            setTimeout(()=>{
-                expect(Fs.existsSync(keepfp)).to.be.equal(true);
-                expect(Fs.existsSync(removefp)).to.be.equal(false);
-                done();
-            },4000);
+            await disk.cacheCleanerInit();
+            await setTimeout(async ()=>{
+                expect(await fs.exists(keepfp)).to.be.equal(true);
+                expect(await fs.exists(removefp)).to.be.equal(false);
+            }, 4000);
 
         });
 

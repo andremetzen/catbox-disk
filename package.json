@@ -1,8 +1,8 @@
 {
   "name": "catbox-disk",
   "description": "Disk storage adapter for catbox",
-  "version": "2.0.9",
-  "repository": "git://github.com/mirusresearch/catbox-disk",
+  "version": "3.0.0",
+  "repository": "git://github.com/andremetzen/catbox-disk",
   "main": "lib/index.js",
   "keywords": [
     "cache",
@@ -10,15 +10,16 @@
     "disk"
   ],
   "engines": {
-    "node": ">=4.0.0"
+    "node": ">=8.0.0"
   },
   "dependencies": {
+    "boom": "7.x.x",
     "hoek": "4.x.x",
     "mkdirp": "^0.5.1",
     "walk": "^2.3.9"
   },
   "devDependencies": {
-    "catbox": "7.x.x",
+    "catbox": "10.x.x",
     "code": "4.x.x",
     "lab": "^13.0.1",
     "tmp": "0.0.31"
